@@ -103,7 +103,7 @@
             background: #2c3e50;
             color: white;
             display: flex;
-            justify-content: between;
+            justify-content: space-between; /* Changed from 'between' to 'space-between' */
             align-items: center;
         }
 
@@ -311,7 +311,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Section 1: PDF List -->
         <div class="section section-1">
             <div class="upload-area">
                 <input type="file" id="pdfUpload" multiple accept=".pdf" class="upload-input" 
@@ -332,7 +331,6 @@
             </div>
         </div>
 
-        <!-- Section 2: PDF Viewer -->
         <div class="section section-2">
             <div class="viewer-header">
                 <div class="viewer-title" id="viewerTitle">Select a PDF to view</div>
@@ -348,7 +346,6 @@
             </div>
         </div>
 
-        <!-- Section 3: Search Panel -->
         <div class="section section-3">
             <div class="search-header">
                 <input type="text" class="search-box" id="searchBox" 
@@ -384,7 +381,7 @@
         let searchResults = [];
         let currentSearchIndex = -1;
         let zoomScale = 1.0;
-        let pdfPages = [];
+        let pdfPages = []; // Stores rendered PDF page elements and their viewports
 
         // PDF.js configuration
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -408,14 +405,11 @@
                         ocrData = JSON.parse(e.target.result);
                         console.log('OCR data loaded:', ocrData.length, 'entries');
                         
-                        // Debug: Show some sample data
                         if (ocrData.length > 0) {
-                            console.log('Sample OCR entry:', ocrData[0]);
                             const uniqueDocuments = [...new Set(ocrData.map(item => item.document_name))];
                             console.log('Documents in OCR data:', uniqueDocuments);
                         }
                         
-                        // Update search results area to indicate JSON is loaded
                         document.getElementById('searchResults').innerHTML = 
                             '<div class="no-results">JSON loaded successfully. Select a PDF and search for words.</div>';
                             
@@ -460,9 +454,10 @@
                 const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
                 await renderPdf(pdf);
                 
-                // Update search results if there's an active search
-                if (document.getElementById('searchBox').value.trim()) {
-                    performSearch(document.getElementById('searchBox').value.trim());
+                // If there's an active search query, re-perform search and highlight
+                const currentQuery = document.getElementById('searchBox').value.trim();
+                if (currentQuery) {
+                    performSearch(currentQuery);
                 }
             } catch (error) {
                 console.error('Error loading PDF:', error);
@@ -471,13 +466,15 @@
             }
         }
 
-        async function renderPdf(pdf) {
+        async function renderPdf(pdfDocument) { // Renamed 'pdf' to 'pdfDocument' for clarity
             const container = document.getElementById('pdfContainer');
             container.innerHTML = '';
-            pdfPages = [];
+            pdfPages = []; // Clear previous pages
 
-            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                const page = await pdf.getPage(pageNum);
+            for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+                const page = await pdfDocument.getPage(pageNum);
+                // Get the default viewport (scale 1.0) and then apply our custom zoomScale
+                const unscaledViewport = page.getViewport({ scale: 1.0 });
                 const viewport = page.getViewport({ scale: zoomScale });
 
                 const pageDiv = document.createElement('div');
@@ -504,6 +501,7 @@
                     element: pageDiv,
                     canvas: canvas,
                     viewport: viewport,
+                    unscaledViewport: unscaledViewport, // Store unscaled viewport for bbox calculations
                     pageNum: pageNum
                 });
             }
@@ -519,10 +517,6 @@
         }
 
         function performSearch(query) {
-            console.log('Performing search for:', query);
-            console.log('OCR data length:', ocrData.length);
-            console.log('Current PDF:', currentPdf);
-            
             if (!ocrData.length) {
                 document.getElementById('searchResults').innerHTML = 
                     '<div class="no-results">Please upload JSON file first</div>';
@@ -537,18 +531,10 @@
 
             const normalizedQuery = query.toLowerCase();
             
-            // Debug: Check what document names are in the OCR data
-            const uniqueDocuments = [...new Set(ocrData.map(item => item.document_name))];
-            console.log('Available documents in OCR data:', uniqueDocuments);
-            console.log('Looking for document:', currentPdf);
-
-            // More flexible matching for document names
             searchResults = ocrData.filter(item => {
-                const docNameMatch = item.document_name === currentPdf || 
-                                   item.document_name.toLowerCase() === currentPdf.toLowerCase() ||
-                                   currentPdf.includes(item.document_name) ||
-                                   item.document_name.includes(currentPdf.replace('.pdf', ''));
-                
+                // Ensure exact match for document name
+                const docNameMatch = item.document_name === currentPdf;
+                                   
                 const wordMatch = item.word && item.word.toLowerCase().includes(normalizedQuery);
                 
                 return docNameMatch && wordMatch;
@@ -559,15 +545,14 @@
                 return a.bbox[1] - b.bbox[1]; // Sort by y-coordinate within the same page
             });
 
-            console.log('Search results found:', searchResults.length);
-            console.log('Sample results:', searchResults.slice(0, 3));
-
             displaySearchResults();
             updateSearchInfo();
             
             if (searchResults.length > 0) {
                 currentSearchIndex = 0;
                 highlightCurrentResult();
+            } else {
+                clearHighlights(); // Clear highlights if no results
             }
         }
 
@@ -580,7 +565,7 @@
             }
 
             resultsContainer.innerHTML = searchResults.map((result, index) => `
-                <div class="result-item" onclick="goToResult(${index})">
+                <div class="result-item ${index === currentSearchIndex ? 'active' : ''}" onclick="goToResult(${index})">
                     <div class="result-word">${result.word}</div>
                     <div class="result-meta">
                         <span>Page ${result.page_num}</span>
@@ -610,11 +595,7 @@
             currentSearchIndex = index;
             highlightCurrentResult();
             updateSearchInfo();
-            
-            // Update active state in search results
-            document.querySelectorAll('.result-item').forEach((item, i) => {
-                item.classList.toggle('active', i === index);
-            });
+            updateActiveResult(); // Ensure active class is updated
         }
 
         function navigatePrevious() {
@@ -639,88 +620,73 @@
             document.querySelectorAll('.result-item').forEach((item, i) => {
                 item.classList.toggle('active', i === currentSearchIndex);
             });
+            // Scroll search results view to the active item
+            const activeItem = document.querySelector('.result-item.active');
+            if (activeItem) {
+                activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
 
-        function highlightCurrentResult() {
-            if (currentSearchIndex < 0 || currentSearchIndex >= searchResults.length) return;
-
-            const result = searchResults[currentSearchIndex];
-            console.log('Highlighting result:', result);
-            
-            // Clear previous highlights
+        function clearHighlights() {
             document.querySelectorAll('.bbox-overlay').forEach(overlay => {
                 overlay.remove();
             });
+        }
 
-            // Find the target page
+        function highlightCurrentResult() {
+            clearHighlights(); // Clear previous highlights first
+
+            if (currentSearchIndex < 0 || currentSearchIndex >= searchResults.length) return;
+
+            const result = searchResults[currentSearchIndex];
+            
             const targetPage = pdfPages.find(page => page.pageNum === result.page_num);
             if (!targetPage) {
-                console.log('Target page not found:', result.page_num);
+                console.warn(`Target page ${result.page_num} not found for highlight.`);
                 return;
             }
 
-            console.log('Target page found:', targetPage.pageNum);
+            const pageDiv = targetPage.element;
+            const canvas = targetPage.canvas;
+            const unscaledViewport = targetPage.unscaledViewport; // Use the unscaled viewport for bbox transformation
 
             // Create bounding box overlay
             const overlay = document.createElement('div');
             overlay.className = 'bbox-overlay active highlighted';
             
-            // Get the actual canvas dimensions and PDF page dimensions
-            const canvas = targetPage.canvas;
-            const viewport = targetPage.viewport;
-            
-            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
-            console.log('Viewport dimensions:', viewport.width, 'x', viewport.height);
-            console.log('Original bbox:', result.bbox);
-            
-            // The bbox coordinates are typically in the original PDF coordinate system
-            // We need to scale them to match the current canvas size
-            const scaleX = canvas.width / viewport.width;
-            const scaleY = canvas.height / viewport.height;
-            
-            // Apply the current zoom scale
-            const left = (result.bbox[0] / scaleX) * zoomScale;
-            const top = (result.bbox[1] / scaleY) * zoomScale;
-            const width = ((result.bbox[2] - result.bbox[0]) / scaleX) * zoomScale;
-            const height = ((result.bbox[3] - result.bbox[1]) / scaleY) * zoomScale;
+            // PDF.js utility to transform PDF coordinates (bbox) to viewport/canvas coordinates
+            // result.bbox format: [x1, y1, x2, y2]
+            // We need to transform x1, y1 and x2, y2 separately
+            const [x1, y1, x2, y2] = result.bbox;
 
-            console.log('Calculated overlay position:', { left, top, width, height });
+            // Transform top-left and bottom-right points of the bbox
+            const [transformedX1, transformedY1] = unscaledViewport.convertToViewportPoint(x1, y1);
+            const [transformedX2, transformedY2] = unscaledViewport.convertToViewportPoint(x2, y2);
+            
+            // Calculate dimensions based on the transformed points
+            // Note: PDF Y-axis is often inverted compared to screen Y-axis.
+            // convertToViewportPoint usually handles this inversion.
+            const left = Math.min(transformedX1, transformedX2) * zoomScale;
+            const top = Math.min(transformedY1, transformedY2) * zoomScale;
+            const width = Math.abs(transformedX2 - transformedX1) * zoomScale;
+            const height = Math.abs(transformedY2 - transformedY1) * zoomScale;
+            
+            overlay.style.left = `${left}px`;
+            overlay.style.top = `${top}px`;
+            overlay.style.width = `${width}px`;
+            overlay.style.height = `${height}px`;
 
-            overlay.style.left = left + 'px';
-            overlay.style.top = top + 'px';
-            overlay.style.width = width + 'px';
-            overlay.style.height = height + 'px';
-
-            targetPage.element.style.position = 'relative';
-            targetPage.element.appendChild(overlay);
+            pageDiv.style.position = 'relative'; // Ensure pageDiv is positioned to contain the absolute overlay
+            pageDiv.appendChild(overlay);
 
             // Scroll to the element
             const container = document.getElementById('pdfContainer');
-            const elementTop = targetPage.element.offsetTop + top;
-            const containerHeight = container.clientHeight;
-            const scrollTop = elementTop - containerHeight / 2;
+            // Calculate the position to scroll to. We want the bbox to be roughly in the middle.
+            const scrollTopPosition = pageDiv.offsetTop + top - (container.clientHeight / 2) + (height / 2);
 
             container.scrollTo({
-                top: Math.max(0, scrollTop),
+                top: Math.max(0, scrollTopPosition),
                 behavior: 'smooth'
-            });
-
-            console.log('Scrolled to position:', scrollTop);
-        }
-
-        function clearSearch() {
-            searchResults = [];
-            currentSearchIndex = -1;
-            document.getElementById('searchResults').innerHTML = 
-                '<div class="no-results">Upload JSON file and search for words</div>';
-            document.getElementById('searchCount').textContent = '0 results';
-            document.getElementById('currentPosition').textContent = '-/-';
-            document.getElementById('prevBtn').disabled = true;
-            document.getElementById('nextBtn').disabled = true;
-            
-            // Clear all overlays
-            document.querySelectorAll('.bbox-overlay').forEach(overlay => {
-                overlay.remove();
             });
         }
 
@@ -738,19 +704,30 @@
             document.getElementById('zoomLevel').textContent = Math.round(zoomScale * 100) + '%';
             
             if (currentPdf) {
-                // Find the currently selected PDF file
                 const selectedPdfFile = pdfFiles.find(file => file.name === currentPdf);
                 if (selectedPdfFile) {
                     const arrayBuffer = await selectedPdfFile.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
                     await renderPdf(pdf);
                     
-                    // Re-highlight current result if there is one
-                    if (currentSearchIndex >= 0) {
-                        setTimeout(() => highlightCurrentResult(), 100);
+                    // Re-highlight current result if there is one, with a slight delay
+                    if (currentSearchIndex >= 0 && searchResults.length > 0) {
+                        setTimeout(() => highlightCurrentResult(), 100); 
                     }
                 }
             }
+        }
+
+        function clearSearch() {
+            searchResults = [];
+            currentSearchIndex = -1;
+            document.getElementById('searchResults').innerHTML = 
+                '<div class="no-results">Upload JSON file and search for words</div>';
+            document.getElementById('searchCount').textContent = '0 results';
+            document.getElementById('currentPosition').textContent = '-/-';
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
+            clearHighlights();
         }
 
         // Initialize the application
