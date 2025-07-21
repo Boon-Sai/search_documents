@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF OCR Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 2px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        /* Section 1 - PDF List */
+        .section-1 {
+            width: 20%;
+            min-width: 250px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .upload-area {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: #fafafa;
+        }
+
+        .upload-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .upload-input:hover {
+            border-color: #4CAF50;
+            background: #f9fff9;
+        }
+
+        .pdf-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .pdf-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .pdf-item:hover {
+            background: #e3f2fd;
+            border-left-color: #2196F3;
+        }
+
+        .pdf-item.active {
+            background: #e8f5e8;
+            border-left-color: #4CAF50;
+            font-weight: 600;
+        }
+
+        /* Section 2 - PDF Viewer */
+        .section-2 {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .viewer-header {
+            padding: 15px 20px;
+            background: #2c3e50;
+            color: white;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+
+        .viewer-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .zoom-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .zoom-btn {
+            padding: 5px 10px;
+            background: #34495e;
+            border: none;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .zoom-btn:hover {
+            background: #4a6741;
+        }
+
+        .pdf-container {
+            flex: 1;
+            overflow: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            position: relative;
+        }
+
+        .pdf-page {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            position: relative;
+            background: white;
+        }
+
+        .pdf-canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+        }
+
+        .bbox-overlay {
+            position: absolute;
+            border: 2px solid #ff4444;
+            background: rgba(255, 68, 68, 0.1);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .bbox-overlay.active {
+            opacity: 1;
+        }
+
+        .bbox-overlay.highlighted {
+            border-color: #00ff00;
+            background: rgba(0, 255, 0, 0.2);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        /* Section 3 - Search Panel */
+        .section-3 {
+            width: 30%;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .search-header {
+            padding: 20px;
+            background: #34495e;
+            color: white;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+
+        .search-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #ecf0f1;
+            font-size: 14px;
+        }
+
+        .navigation-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .nav-btn {
+            flex: 1;
+            padding: 10px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            background: #2980b9;
+        }
+
+        .nav-btn:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+        }
+
+        .search-results {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 20px;
+        }
+
+        .result-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            cursor: pointer;
+            border-left: 4px solid #ddd;
+            transition: all 0.3s ease;
+        }
+
+        .result-item:hover {
+            background: #e3f2fd;
+            border-left-color: #2196F3;
+        }
+
+        .result-item.active {
+            background: #fff3e0;
+            border-left-color: #ff9800;
+        }
+
+        .result-word {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+
+        .result-meta {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .result-confidence {
+            background: #e8f5e8;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #666;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Section 1: PDF List -->
+        <div class="section section-1">
+            <div class="upload-area">
+                <input type="file" id="pdfUpload" multiple accept=".pdf" class="upload-input" 
+                       title="Upload PDF files" style="display: none;">
+                <div class="upload-input" onclick="document.getElementById('pdfUpload').click();">
+                    📁 Upload PDF Files
+                </div>
+                
+                <input type="file" id="jsonUpload" accept=".json" class="upload-input" 
+                       title="Upload JSON file" style="display: none;">
+                <div class="upload-input" onclick="document.getElementById('jsonUpload').click();">
+                    📄 Upload JSON File
+                </div>
+            </div>
+            
+            <div class="pdf-list" id="pdfList">
+                <div class="no-results">Upload PDF files to begin</div>
+            </div>
+        </div>
+
+        <!-- Section 2: PDF Viewer -->
+        <div class="section section-2">
+            <div class="viewer-header">
+                <div class="viewer-title" id="viewerTitle">Select a PDF to view</div>
+                <div class="zoom-controls">
+                    <button class="zoom-btn" onclick="zoomOut()">−</button>
+                    <span id="zoomLevel">100%</span>
+                    <button class="zoom-btn" onclick="zoomIn()">+</button>
+                </div>
+            </div>
+            
+            <div class="pdf-container" id="pdfContainer">
+                <div class="loading">Select a PDF file to view</div>
+            </div>
+        </div>
+
+        <!-- Section 3: Search Panel -->
+        <div class="section section-3">
+            <div class="search-header">
+                <input type="text" class="search-box" id="searchBox" 
+                       placeholder="Search words in documents..." 
+                       onkeyup="searchWords(event)">
+                
+                <div class="search-info">
+                    <span id="searchCount">0 results</span>
+                    <span id="currentPosition">-/-</span>
+                </div>
+                
+                <div class="navigation-controls">
+                    <button class="nav-btn" id="prevBtn" onclick="navigatePrevious()" disabled>
+                        ← Previous
+                    </button>
+                    <button class="nav-btn" id="nextBtn" onclick="navigateNext()" disabled>
+                        Next →
+                    </button>
+                </div>
+            </div>
+            
+            <div class="search-results" id="searchResults">
+                <div class="no-results">Upload JSON file and search for words</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let pdfFiles = [];
+        let ocrData = [];
+        let currentPdf = null;
+        let searchResults = [];
+        let currentSearchIndex = -1;
+        let zoomScale = 1.0;
+        let pdfPages = [];
+
+        // PDF.js configuration
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // File upload handlers
+        document.getElementById('pdfUpload').addEventListener('change', handlePdfUpload);
+        document.getElementById('jsonUpload').addEventListener('change', handleJsonUpload);
+
+        function handlePdfUpload(event) {
+            const files = Array.from(event.target.files);
+            pdfFiles = files;
+            displayPdfList();
+        }
+
+        function handleJsonUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        ocrData = JSON.parse(e.target.result);
+                        console.log('OCR data loaded:', ocrData.length, 'entries');
+                        
+                        // Debug: Show some sample data
+                        if (ocrData.length > 0) {
+                            console.log('Sample OCR entry:', ocrData[0]);
+                            const uniqueDocuments = [...new Set(ocrData.map(item => item.document_name))];
+                            console.log('Documents in OCR data:', uniqueDocuments);
+                        }
+                        
+                        // Update search results area to indicate JSON is loaded
+                        document.getElementById('searchResults').innerHTML = 
+                            '<div class="no-results">JSON loaded successfully. Select a PDF and search for words.</div>';
+                            
+                    } catch (error) {
+                        console.error('JSON parsing error:', error);
+                        alert('Error parsing JSON file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        function displayPdfList() {
+            const pdfList = document.getElementById('pdfList');
+            if (pdfFiles.length === 0) {
+                pdfList.innerHTML = '<div class="no-results">Upload PDF files to begin</div>';
+                return;
+            }
+
+            pdfList.innerHTML = pdfFiles.map((file, index) => `
+                <div class="pdf-item" onclick="selectPdf(${index})">
+                    <strong>${file.name}</strong>
+                    <br><small>${(file.size / 1024 / 1024).toFixed(1)} MB</small>
+                </div>
+            `).join('');
+        }
+
+        async function selectPdf(index) {
+            // Update active state
+            document.querySelectorAll('.pdf-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+
+            const file = pdfFiles[index];
+            currentPdf = file.name;
+            
+            document.getElementById('viewerTitle').textContent = file.name;
+            document.getElementById('pdfContainer').innerHTML = '<div class="loading">Loading PDF...</div>';
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                await renderPdf(pdf);
+                
+                // Update search results if there's an active search
+                if (document.getElementById('searchBox').value.trim()) {
+                    performSearch(document.getElementById('searchBox').value.trim());
+                }
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                document.getElementById('pdfContainer').innerHTML = 
+                    '<div class="no-results">Error loading PDF: ' + error.message + '</div>';
+            }
+        }
+
+        async function renderPdf(pdf) {
+            const container = document.getElementById('pdfContainer');
+            container.innerHTML = '';
+            pdfPages = [];
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: zoomScale });
+
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'pdf-page';
+                pageDiv.setAttribute('data-page', pageNum);
+
+                const canvas = document.createElement('canvas');
+                canvas.className = 'pdf-canvas';
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                const context = canvas.getContext('2d');
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+
+                await page.render(renderContext).promise;
+                
+                pageDiv.appendChild(canvas);
+                container.appendChild(pageDiv);
+                
+                pdfPages.push({
+                    element: pageDiv,
+                    canvas: canvas,
+                    viewport: viewport,
+                    pageNum: pageNum
+                });
+            }
+        }
+
+        function searchWords(event) {
+            const query = event.target.value.trim();
+            if (query) {
+                performSearch(query);
+            } else {
+                clearSearch();
+            }
+        }
+
+        function performSearch(query) {
+            console.log('Performing search for:', query);
+            console.log('OCR data length:', ocrData.length);
+            console.log('Current PDF:', currentPdf);
+            
+            if (!ocrData.length) {
+                document.getElementById('searchResults').innerHTML = 
+                    '<div class="no-results">Please upload JSON file first</div>';
+                return;
+            }
+
+            if (!currentPdf) {
+                document.getElementById('searchResults').innerHTML = 
+                    '<div class="no-results">Please select a PDF first</div>';
+                return;
+            }
+
+            const normalizedQuery = query.toLowerCase();
+            
+            // Debug: Check what document names are in the OCR data
+            const uniqueDocuments = [...new Set(ocrData.map(item => item.document_name))];
+            console.log('Available documents in OCR data:', uniqueDocuments);
+            console.log('Looking for document:', currentPdf);
+
+            // More flexible matching for document names
+            searchResults = ocrData.filter(item => {
+                const docNameMatch = item.document_name === currentPdf || 
+                                   item.document_name.toLowerCase() === currentPdf.toLowerCase() ||
+                                   currentPdf.includes(item.document_name) ||
+                                   item.document_name.includes(currentPdf.replace('.pdf', ''));
+                
+                const wordMatch = item.word && item.word.toLowerCase().includes(normalizedQuery);
+                
+                return docNameMatch && wordMatch;
+            }).sort((a, b) => {
+                if (a.page_num !== b.page_num) {
+                    return a.page_num - b.page_num;
+                }
+                return a.bbox[1] - b.bbox[1]; // Sort by y-coordinate within the same page
+            });
+
+            console.log('Search results found:', searchResults.length);
+            console.log('Sample results:', searchResults.slice(0, 3));
+
+            displaySearchResults();
+            updateSearchInfo();
+            
+            if (searchResults.length > 0) {
+                currentSearchIndex = 0;
+                highlightCurrentResult();
+            }
+        }
+
+        function displaySearchResults() {
+            const resultsContainer = document.getElementById('searchResults');
+            
+            if (searchResults.length === 0) {
+                resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
+                return;
+            }
+
+            resultsContainer.innerHTML = searchResults.map((result, index) => `
+                <div class="result-item" onclick="goToResult(${index})">
+                    <div class="result-word">${result.word}</div>
+                    <div class="result-meta">
+                        <span>Page ${result.page_num}</span>
+                        <span class="result-confidence">${(result.confidence * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateSearchInfo() {
+            document.getElementById('searchCount').textContent = 
+                `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`;
+            
+            if (searchResults.length > 0 && currentSearchIndex >= 0) {
+                document.getElementById('currentPosition').textContent = 
+                    `${currentSearchIndex + 1}/${searchResults.length}`;
+            } else {
+                document.getElementById('currentPosition').textContent = '-/-';
+            }
+
+            // Update navigation buttons
+            document.getElementById('prevBtn').disabled = currentSearchIndex <= 0;
+            document.getElementById('nextBtn').disabled = currentSearchIndex >= searchResults.length - 1;
+        }
+
+        function goToResult(index) {
+            currentSearchIndex = index;
+            highlightCurrentResult();
+            updateSearchInfo();
+            
+            // Update active state in search results
+            document.querySelectorAll('.result-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+        }
+
+        function navigatePrevious() {
+            if (currentSearchIndex > 0) {
+                currentSearchIndex--;
+                highlightCurrentResult();
+                updateSearchInfo();
+                updateActiveResult();
+            }
+        }
+
+        function navigateNext() {
+            if (currentSearchIndex < searchResults.length - 1) {
+                currentSearchIndex++;
+                highlightCurrentResult();
+                updateSearchInfo();
+                updateActiveResult();
+            }
+        }
+
+        function updateActiveResult() {
+            document.querySelectorAll('.result-item').forEach((item, i) => {
+                item.classList.toggle('active', i === currentSearchIndex);
+            });
+        }
+
+        function highlightCurrentResult() {
+            if (currentSearchIndex < 0 || currentSearchIndex >= searchResults.length) return;
+
+            const result = searchResults[currentSearchIndex];
+            console.log('Highlighting result:', result);
+            
+            // Clear previous highlights
+            document.querySelectorAll('.bbox-overlay').forEach(overlay => {
+                overlay.remove();
+            });
+
+            // Find the target page
+            const targetPage = pdfPages.find(page => page.pageNum === result.page_num);
+            if (!targetPage) {
+                console.log('Target page not found:', result.page_num);
+                return;
+            }
+
+            console.log('Target page found:', targetPage.pageNum);
+
+            // Create bounding box overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'bbox-overlay active highlighted';
+            
+            // Get the actual canvas dimensions and PDF page dimensions
+            const canvas = targetPage.canvas;
+            const viewport = targetPage.viewport;
+            
+            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+            console.log('Viewport dimensions:', viewport.width, 'x', viewport.height);
+            console.log('Original bbox:', result.bbox);
+            
+            // The bbox coordinates are typically in the original PDF coordinate system
+            // We need to scale them to match the current canvas size
+            const scaleX = canvas.width / viewport.width;
+            const scaleY = canvas.height / viewport.height;
+            
+            // Apply the current zoom scale
+            const left = (result.bbox[0] / scaleX) * zoomScale;
+            const top = (result.bbox[1] / scaleY) * zoomScale;
+            const width = ((result.bbox[2] - result.bbox[0]) / scaleX) * zoomScale;
+            const height = ((result.bbox[3] - result.bbox[1]) / scaleY) * zoomScale;
+
+            console.log('Calculated overlay position:', { left, top, width, height });
+
+            overlay.style.left = left + 'px';
+            overlay.style.top = top + 'px';
+            overlay.style.width = width + 'px';
+            overlay.style.height = height + 'px';
+
+            targetPage.element.style.position = 'relative';
+            targetPage.element.appendChild(overlay);
+
+            // Scroll to the element
+            const container = document.getElementById('pdfContainer');
+            const elementTop = targetPage.element.offsetTop + top;
+            const containerHeight = container.clientHeight;
+            const scrollTop = elementTop - containerHeight / 2;
+
+            container.scrollTo({
+                top: Math.max(0, scrollTop),
+                behavior: 'smooth'
+            });
+
+            console.log('Scrolled to position:', scrollTop);
+        }
+
+        function clearSearch() {
+            searchResults = [];
+            currentSearchIndex = -1;
+            document.getElementById('searchResults').innerHTML = 
+                '<div class="no-results">Upload JSON file and search for words</div>';
+            document.getElementById('searchCount').textContent = '0 results';
+            document.getElementById('currentPosition').textContent = '-/-';
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
+            
+            // Clear all overlays
+            document.querySelectorAll('.bbox-overlay').forEach(overlay => {
+                overlay.remove();
+            });
+        }
+
+        function zoomIn() {
+            zoomScale = Math.min(zoomScale + 0.25, 3.0);
+            updateZoom();
+        }
+
+        function zoomOut() {
+            zoomScale = Math.max(zoomScale - 0.25, 0.5);
+            updateZoom();
+        }
+
+        async function updateZoom() {
+            document.getElementById('zoomLevel').textContent = Math.round(zoomScale * 100) + '%';
+            
+            if (currentPdf) {
+                // Find the currently selected PDF file
+                const selectedPdfFile = pdfFiles.find(file => file.name === currentPdf);
+                if (selectedPdfFile) {
+                    const arrayBuffer = await selectedPdfFile.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    await renderPdf(pdf);
+                    
+                    // Re-highlight current result if there is one
+                    if (currentSearchIndex >= 0) {
+                        setTimeout(() => highlightCurrentResult(), 100);
+                    }
+                }
+            }
+        }
+
+        // Initialize the application
+        console.log('PDF OCR Viewer initialized');
+    </script>
+</body>
+</html>
